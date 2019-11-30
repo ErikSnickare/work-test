@@ -1,0 +1,101 @@
+
+AWSTemplateFormatVersion: 2010-09-09
+
+
+Resources:
+
+  DB:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Retain
+    Properties:
+      DBName: WorkTestDB
+      AllocatedStorage: 10
+      AutoMinorVersionUpgrade: true
+      BackupRetentionPeriod: 1
+      DBInstanceClass: db.t2.micro
+      DBParameterGroupName: default.postgres9.5
+      Engine: postgres
+      EngineVersion: 9.5.15
+      MasterUsername: postgres
+      MasterUserPassword: password
+      Port: 5432
+      PreferredBackupWindow: ''
+      PreferredMaintenanceWindow: fri:04:34-fri:05:04
+      StorageType: gp2
+      StorageEncrypted: False
+
+  WorkTest:
+    Type: AWS::S3::Bucket
+    DependsOn: WorkTestS3Notifications
+    Properties:
+      BucketName: work-test-wh
+      NotificationConfiguration:
+        TopicConfigurations:
+          - Event: s3:ObjectCreated:*
+            Topic: !Ref WorkTestS3Notifications
+
+  WorkTestS3Notifications:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: work-test-wh-notifications
+
+  WorkTestSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: sqs
+      TopicArn: !Ref WorkTestS3Notifications
+      Endpoint: !GetAtt WorkTestQueue.Arn
+
+  WorkTestQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: work-test-bucket-notification-queue
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt WorkTestDeadLetterQueue.Arn
+        maxReceiveCount: 3
+
+  WorkTestDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: work-test-bucket-notification-dead-letters
+
+  SNSTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      PolicyDocument:
+        Id: WorkTestTopicPolicy
+        Version: '2012-10-17'
+        Statement:
+        - Sid: Statement-id
+          Effect: Allow
+          Principal:
+            AWS: "*"
+          Action: sns:Publish
+          Resource:
+            Ref: WorkTestS3Notifications
+          Condition:
+            ArnLike:
+              aws:SourceArn:
+                Fn::Join:
+                - ''
+                - - 'arn:aws:s3:::'
+                  - Ref: WorkTest
+      Topics:
+      - Ref: WorkTestS3Notifications
+
+
+  WorkTestQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      PolicyDocument:
+        Id: MyQueuePolicy
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Allow-Subscription
+            Effect: Allow
+            Principal:
+              AWS: "*"
+            Action: sqs:*
+            Resource: !GetAtt WorkTestQueue.Arn
+      Queues:
+        - !Ref WorkTestQueue

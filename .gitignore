@@ -1,0 +1,6 @@
+get_data.py
+./clean_data
+./data
+__pycache__
+packages
+*.json

@@ -1,0 +1,106 @@
+
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  Version:
+    Description: The lambda version
+    Type: String
+
+Resources:
+  DBInsert:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: db_insert.handle_bucket_event
+      Role: !GetAtt LambdaRole.Arn
+      Code:
+        S3Bucket: work-test-lambda-functions
+        S3Key: !Sub handler_package_${Version}.zip
+      Runtime: python3.6
+      ReservedConcurrentExecutions: 10
+      Timeout: 900
+      Environment:
+        Variables:
+          VERSION: !Ref Version
+          DB_USER: postgres
+          DB_ENDPOINT: wd1xahto9pb1465.crkvillkum9s.eu-west-1.rds.amazonaws.com
+
+
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt DBInsert.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !Sub arn:aws:sqs:eu-west-1:${AWS::AccountId}:work-test-bucket-notification-queue
+
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: LambdaPolicy1
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action: 's3:*'
+              Resource: arn:aws:s3:::work-test-wh/*
+        - PolicyName: LambdaPolicy2
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+                - ssm:DescribeParameter
+              Resource: arn:aws:ssm:eu-west-1:839401456983:parameter/snowflake.password
+        - PolicyName: LambdaPolicy3
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action: 'cloudwatch:*'
+              Resource: "*"
+        - PolicyName: LambdaPolicy4
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+                - logs:DescribeLogStreams
+              Resource: "arn:aws:logs:*:*:*"
+        - PolicyName: LambdaPolicy5
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action: logs:CreateLogGroup
+              Resource: !Sub arn:aws:logs:${AWS::Region}::${AWS::AccountId}:*
+        - PolicyName: LambdaPolicy6
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action: kms:Decrypt
+              Resource: "*"
+
+
+  DBInsertEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 2
+      Enabled: true
+      EventSourceArn: !Sub arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:work-test-bucket-notification-queue
+      FunctionName: !GetAtt DBInsert.Arn
+
